@@ -62,6 +62,12 @@ describe('buatSorotan — paling untung', () => {
     expect(s[0].teks).toBe('Produk P03 produk paling untung #1: laba Rp900.000 (margin 25,0%).');
   });
 
+  it('produk tanpa HPP tidak ikut "paling untung" (labanya belum akurat)', () => {
+    const data = SEPULUH.map((p) => (p.sku === 'P03' ? { ...p, hpp_tersedia: false } : p));
+    const s = buatSorotan(data, [], OPSI_DEFAULT).filter((x) => x.jenis === 'PRODUK_PALING_UNTUNG');
+    expect(s.map((x) => x.sku)).toEqual(['P10', 'P09', 'P08']);
+  });
+
   it('platform paling untung dan margin terbaik (bila berbeda)', () => {
     const s = buatSorotan([], [plat('Shopee', 18000, 12.9), plat('TikTok Shop', 14000, 28)], OPSI_DEFAULT);
     expect(s).toEqual([

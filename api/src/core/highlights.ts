@@ -25,8 +25,9 @@ export function buatSorotan(produk: BarisProduk[], platform: BarisPlatform[], op
     }
   });
 
+  // Produk tanpa HPP dikecualikan: labanya membengkak karena HPP dianggap 0.
   produk
-    .filter((p) => p.laba_kontribusi > 0)
+    .filter((p) => p.laba_kontribusi > 0 && p.hpp_tersedia)
     .sort((a, b) => b.laba_kontribusi - a.laba_kontribusi || a.sku.localeCompare(b.sku))
     .slice(0, 3)
     .forEach((p, i) => hasil.push({

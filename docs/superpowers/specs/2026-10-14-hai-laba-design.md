@@ -589,7 +589,7 @@ Dihitung dari `per_produk` dan `per_platform`:
     produk), dengan laba_kontribusi < 0 (rugi) atau margin < `ambang_margin_tipis_persen`
     (tipis).
   - Produk tanpa HPP dikecualikan.
-- `PRODUK_PALING_UNTUNG`: 3 produk teratas menurut laba_kontribusi.
+- `PRODUK_PALING_UNTUNG`: 3 produk teratas menurut laba_kontribusi (produk tanpa HPP dikecualikan, karena labanya membengkak).
 - `PLATFORM_PALING_UNTUNG`: menurut laba_kontribusi.
 - `PLATFORM_MARGIN_TERBAIK`: hanya jika platformnya berbeda dari yang paling untung.
 
