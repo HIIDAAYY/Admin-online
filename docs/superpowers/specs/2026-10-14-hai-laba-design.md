@@ -1,7 +1,7 @@
 # HAI Laba — Spesifikasi Desain v1
 
 Tanggal: 2026-10-14
-Status: disetujui (rencana), menunggu tinjauan spec
+Status: disetujui (spec + koreksi A–E, 2026-10-14)
 
 ## 1. Tujuan
 
@@ -248,7 +248,9 @@ Response 200:
     "hpp": 0, "iklan": 0, "packaging": 0, "laba_kontribusi": 0,
     "biaya_tetap": 0, "laba_bersih": 0, "margin_persen": 0,
     "jumlah_pesanan": 0, "jumlah_pesanan_batal": 0, "jumlah_pesanan_retur": 0,
-    "jumlah_pesanan_belum_cair": 0, "iklan_tidak_teralokasi": 0
+    "jumlah_pesanan_belum_cair": 0, "iklan_tidak_teralokasi": 0,
+    "tanggal_pertama": "2026-07-01", "tanggal_terakhir": "2026-09-30",
+    "periode": ["2026-07", "2026-08", "2026-09"]
   },
   "rincian_biaya_marketplace": {
     "biaya_admin": 0, "biaya_layanan": 0,
@@ -265,7 +267,8 @@ Response 200:
   "per_bulan":    [{ "bulan": "2026-07", "jumlah_pesanan": 0, "omzet_kotor": 0,
                      "retur": 0, "penjualan_bersih": 0, "potongan_marketplace": 0,
                      "hpp": 0, "iklan": 0, "packaging": 0, "laba_kontribusi": 0,
-                     "biaya_tetap": 0, "laba_bersih": 0, "margin_persen": 0 }],
+                     "iklan_tidak_teralokasi": 0, "biaya_tetap": 0,
+                     "laba_bersih": 0, "margin_persen": 0 }],
   "sorotan":  [{ "jenis": "LARIS_TAPI_RUGI", "teks": "…", "sku": "KS-01", "platform": null }],
   "masalah":  [{ "jenis": "SKU_TANPA_HPP", "tingkat": "peringatan", "platform": "Shopee",
                  "sheet": "Pesanan - Shopee", "baris": 17, "no_pesanan": "…",
@@ -276,6 +279,11 @@ Response 200:
 }
 ```
 
+- `ringkasan.iklan` dan `per_bulan[].iklan` hanya berisi iklan **teralokasi**. Iklan
+  tidak teralokasi dilaporkan terpisah di `iklan_tidak_teralokasi`.
+- `tanggal_pertama` / `tanggal_terakhir`: tanggal (Asia/Jakarta, `yyyy-mm-dd`) pesanan
+  non-batal paling awal dan paling akhir. `periode` = daftar bulan periode laporan
+  (§6.8).
 - `per_produk` diurutkan dari laba_kontribusi terkecil (yang rugi tampil di atas).
   `per_platform` dan `per_bulan` diurutkan menurut nama dan bulan.
 - `masalah` dibatasi 1.000 entri. `jumlah_masalah` selalu berisi hitungan lengkap.
@@ -311,6 +319,9 @@ Isi data demo:
 - Termasuk: 2–3 produk laris yang rugi (harga murah + subsidi ongkir + iklan berat),
   pesanan batal, retur, 2 duplikat, 1 SKU tanpa HPP, 1 baris rusak, dan beberapa
   pesanan belum cair (total_diterima kosong) di bulan terakhir.
+- Setiap bulan demo punya pesanan pada tanggal 1 dan hari terakhir bulan, sehingga
+  demo tidak memunculkan `BULAN_TIDAK_PENUH`. Tab Biaya demo hanya berisi 3 bulan
+  periode itu.
 - Sama seed dan sama `bulan_akhir` selalu menghasilkan data identik.
 
 ### 5.4 `POST /v1/mapping/suggest` (fase 5)
@@ -445,6 +456,13 @@ Dihitung per pesanan, hanya jika `total_diterima` dipetakan:
   - Hasilnya dialokasikan ke item non-retur menurut nilai_item (§6.3).
   - `SELISIH_REKONSILIASI` (peringatan) dicatat jika hasilnya negatif kurang dari
     −Rp1.000, atau lebih dari 50% Σ nilai_item. Nilainya tetap dipakai apa adanya.
+  - Pesan untuk selisih **negatif** (dana cair lebih besar dari perhitungan) wajib
+    menyebut kemungkinan penyebab: "Dana cair lebih besar Rp… dari perhitungan.
+    Kemungkinan harga_jual dipetakan ke harga setelah diskon sementara
+    diskon_penjual juga dipetakan, atau ada subsidi dari marketplace."
+  - Pesan untuk selisih **besar** (> 50%): "Potongan lainnya Rp… (…% dari nilai
+    pesanan). Periksa apakah ada kolom biaya yang belum dipetakan atau total_diterima
+    dipetakan ke kolom yang salah."
 
 Jika `total_diterima` tidak dipetakan, `potongan_lainnya = 0` untuk semua pesanan.
 
@@ -475,6 +493,26 @@ Baris berstatus retur:
 
 ### 6.8 Biaya tambahan (tab Biaya)
 
+**Periode laporan** = himpunan bulan (Asia/Jakarta) yang muncul di data pesanan
+**non-batal**, setelah baris gagal dan duplikat dibuang.
+
+- Baris Biaya (iklan, packaging, tetap) dengan bulan **di luar periode** diabaikan
+  seluruhnya: tidak mengurangi laba, tidak dialokasikan, dan **tidak** dicatat sebagai
+  `IKLAN_TIDAK_TERALOKASI`.
+- Jika ada yang diabaikan, dicatat info `BIAYA_DI_LUAR_PERIODE` berisi daftar bulan dan
+  total nilai yang diabaikan per bulan. Untuk packaging (tarif, bukan total), yang
+  dilaporkan adalah tarifnya beserta catatan "tarif per pesanan".
+- Aturan di bawah hanya berlaku untuk baris Biaya di dalam periode.
+
+**Bulan tidak penuh:**
+
+- Untuk setiap bulan dalam periode, jika tanggal pesanan non-batal paling awal di
+  bulan itu bukan tanggal 1, atau yang paling akhir bukan hari terakhir bulan itu,
+  dicatat info `BULAN_TIDAK_PENUH`.
+- Contoh pesan: "Data Juli 2026 hanya mencakup 5–31 Juli. Biaya tetap Juli tetap
+  dihitung penuh."
+- Perhitungan tidak berubah. Biaya tetap dan iklan bulan itu tetap dihitung penuh.
+
 - **Packaging:**
   - Biaya per pesanan = tarif bulan pesanan itu (tarif per platform mengalahkan tarif
     umum).
@@ -490,6 +528,8 @@ Baris berstatus retur:
     `iklan_tidak_teralokasi`.
   - Iklan yang tidak teralokasi tetap mengurangi laba bersih di Ringkasan dan Bulanan,
     tetapi tidak di Produk maupun Platform. Dicatat `IKLAN_TIDAK_TERALOKASI`.
+    Kondisi ini hanya mungkin untuk bulan **di dalam** periode, yaitu ada pesanan di
+    bulan itu tetapi tidak ada di platform p.
 - **Biaya tetap:** tidak dialokasikan ke produk maupun platform. Hanya mengurangi laba
   di Ringkasan dan Bulanan.
 - Baris Biaya dengan bulan atau nilai tak terbaca, atau jenis tidak dikenal, dicatat
@@ -524,10 +564,14 @@ baris retur.
 Margin produk dan platform memakai laba kontribusi. Margin ringkasan dan bulanan
 memakai laba bersih.
 
+`Iklan` di rantai ini, di `ringkasan.iklan`, dan di `per_bulan[].iklan` hanya berisi
+iklan teralokasi. Iklan tidak teralokasi selalu ditampilkan sebagai baris terpisah.
+
 Konsistensi (diuji):
 
 - Σ laba_kontribusi per produk = Σ per platform = laba_kontribusi ringkasan.
-- Σ per bulan untuk setiap kolom = nilai ringkasan.
+- Σ per bulan = nilai ringkasan, untuk setiap kolom uang dan jumlah. Kolom
+  `margin_persen` dikecualikan.
 
 ### 6.10 SKU tanpa HPP
 
@@ -570,8 +614,10 @@ Baris yang seluruh selnya kosong dilewati tanpa dicatat.
 
 Info (bukan masalah):
 
-- `PESANAN_BELUM_CAIR`
+- `PESANAN_BELUM_CAIR` (§6.5)
 - `STATUS_TIDAK_DIPETAKAN` (kolom status tidak dipetakan, semua baris dianggap selesai)
+- `BIAYA_DI_LUAR_PERIODE` (§6.8)
+- `BULAN_TIDAK_PENUH` (§6.8)
 
 ## 7. Add-on Google Sheets
 
@@ -580,6 +626,9 @@ Distribusi v1: **spreadsheet template** berisi script terikat. Pengguna cukup
 `onInstall`) agar kelak bisa diterbitkan ke Workspace Marketplace.
 
 ### 7.1 Struktur spreadsheet
+
+Spreadsheet template diatur ke locale **Indonesia (`id_ID`)** dan zona waktu
+**`Asia/Jakarta`**.
 
 - `Pesanan - [Platform]`: isi export ditempel apa adanya. Nama platform diambil dari
   teks setelah "Pesanan - ".
@@ -591,6 +640,23 @@ Distribusi v1: **spreadsheet template** berisi script terikat. Pengguna cukup
 
 ### 7.2 Menu "HAI"
 
+**Cek locale dan zona waktu.** Dijalankan di awal **Hitung Laba** dan **Isi Data Demo**,
+sebelum langkah lain:
+
+1. Bandingkan `getSpreadsheetLocale()` dengan `id_ID` dan `getSpreadsheetTimeZone()`
+   dengan `Asia/Jakarta`.
+2. Jika salah satu berbeda, tampilkan dialog (HTML modal) yang menyebut nilai saat ini
+   dan risikonya: "Tanggal seperti 03/07/2026 bisa terbaca sebagai 7 Maret, bukan
+   3 Juli, saat export ditempel. Pengelompokan per bulan juga bisa bergeser."
+3. Dialog punya tiga tombol:
+   - **Ubah ke Indonesia & Asia/Jakarta lalu lanjut:** memanggil `setSpreadsheetLocale`
+     dan `setSpreadsheetTimeZone`. Disertai catatan: "Data yang sudah ditempel tidak
+     ikut berubah. Jika tanggal terlihat salah, tempel ulang export-nya."
+   - **Lanjut tanpa mengubah**
+   - **Batal**
+4. Proses **tidak berlanjut** sebelum pengguna memilih. Logika perbandingannya ditaruh
+   di fungsi murni agar bisa diuji.
+
 - **Pengaturan:** dialog untuk mengisi API key dan URL API.
   - Disimpan di `UserProperties`, jadi per pengguna dan tidak terlihat editor lain.
   - Tombol "Tes koneksi" memanggil `/health` dan endpoint ber-auth.
@@ -599,7 +665,10 @@ Distribusi v1: **spreadsheet template** berisi script terikat. Pengguna cukup
   2. `MappingSidebar.html` menampilkan per field: dropdown header (bisa pilih lebih
      dari satu), pilihan item/pesanan untuk field biaya, opsi `harga_jual_basis`, dan
      daftar nilai status dengan dropdown kelompoknya.
-  3. Field wajib yang kosong diberi tanda merah.
+  3. Field wajib yang kosong diberi tanda merah. Field `harga_jual` diberi petunjuk
+     singkat: "Pilih harga **sebelum** diskon penjual. Jika Anda memilih harga setelah
+     diskon, jangan petakan diskon_penjual. Kalau tidak, diskon terhitung dua kali dan
+     muncul selisih rekonsiliasi."
   4. Saat disimpan, template disimpan ke API dan id-nya disimpan di
      `DocumentProperties` dengan kunci `hai.template.<nama tab>`.
 - **Hitung Laba:**
@@ -635,7 +704,10 @@ Semua nilai uang memakai format `"Rp "#,##0;[Red]"-Rp "#,##0`, dan persen memaka
 `0.0"%"`. Setiap tab ditulis ulang dari kosong (clear isi, format, dan grafik).
 
 - **Laporan - Ringkasan:**
-  - Tabel rantai laba §6.9 (label | nilai).
+  - Rentang data di bagian atas: "Data 1 Jul 2026 – 30 Sep 2026 (3 bulan)", dari
+    `tanggal_pertama`, `tanggal_terakhir`, dan `periode`.
+  - Tabel rantai laba §6.9 (label | nilai), dengan baris iklan tidak teralokasi
+    terpisah.
   - Rincian biaya marketplace.
   - Jumlah pesanan (total, batal, retur, belum cair).
   - Daftar sorotan.
@@ -653,7 +725,8 @@ Semua nilai uang memakai format `"Rp "#,##0;[Red]"-Rp "#,##0`, dan persen memaka
 - **Laporan - Bulanan:** tabel per_bulan. Grafik kombinasi: kolom penjualan bersih,
   garis laba bersih.
 - **Masalah Data:**
-  - Bagian info (belum cair, dll.) di atas.
+  - Bagian info di atas: belum cair, biaya di luar periode, bulan tidak penuh, status
+    tidak dipetakan.
   - Ringkasan `jumlah_masalah` per jenis.
   - Tabel masalah: tingkat | jenis | platform | sheet | baris | no_pesanan | sku | pesan.
   - Jika ada lebih dari 1.000 masalah, ditambahkan catatan bahwa daftar dipotong.
@@ -680,7 +753,21 @@ Semua nilai uang memakai format `"Rp "#,##0;[Red]"-Rp "#,##0`, dan persen memaka
   - duplikat lintas tab dan dalam satu tab.
   - packaging (tarif umum vs per platform), iklan (proporsional, tidak teralokasi),
     biaya tetap.
-  - agregasi dan uji konsistensi §6.9, sorotan, batas 1.000 masalah.
+  - periode biaya: tab Biaya berisi 12 bulan (iklan, packaging, tetap), pesanan
+    hanya 1 bulan. Yang diuji:
+    - hanya biaya bulan itu yang mengurangi laba,
+    - tidak ada `IKLAN_TIDAK_TERALOKASI` untuk 11 bulan lainnya,
+    - info `BIAYA_DI_LUAR_PERIODE` berisi 11 bulan dengan total yang benar.
+    Juga diuji: bulan yang semua pesanannya batal tidak masuk periode.
+  - rentang data dan `BULAN_TIDAK_PENUH`:
+    - bulan penuh (ada pesanan tanggal 1 dan hari terakhir) → tanpa info,
+    - mulai tanggal 5 → info,
+    - berakhir sebelum hari terakhir → info,
+    - Februari 2028 (kabisat, hari terakhir 29),
+    - pesanan `2026-07-31T17:30:00Z` dihitung sebagai 1 Agustus.
+  - agregasi dan uji konsistensi §6.9 (tanpa margin_persen), sorotan, batas 1.000
+    masalah.
+  - pesan `SELISIH_REKONSILIASI` negatif memuat kalimat kemungkinan penyebab.
   - generator demo: deterministik, jumlah produk/platform/bulan benar, berisi produk
     laris yang rugi menurut `analyze`.
 - **Tes integrasi route:**
@@ -690,8 +777,16 @@ Semua nilai uang memakai format `"Rp "#,##0;[Red]"-Rp "#,##0`, dan persen memaka
     tercatat tanpa isi data, kepemilikan template.
 - **Add-on:**
   - Logika non-rumus yang bisa diuji (pemilihan kolom dari pemetaan, cek ukuran,
-    konversi tanggal) ditaruh di fungsi murni dan diuji dengan Vitest lewat `vm`.
-  - Selebihnya diuji manual dengan checklist di README.
+    konversi tanggal, perbandingan locale/zona waktu) ditaruh di fungsi murni dan
+    diuji dengan Vitest lewat `vm`.
+  - Selebihnya diuji manual dengan checklist di README. Checklist minimal memuat:
+    - Ubah locale spreadsheet ke English (US) dan zona waktu ke selain Asia/Jakarta.
+      Jalankan Hitung Laba dan Isi Data Demo: dialog peringatan muncul, ketiga tombol
+      bekerja, dan tidak ada perhitungan sebelum tombol dipilih.
+    - Tempel tanggal `03/07/2026` di locale en_US vs id_ID dan amati perbedaannya.
+    - Isi Data Demo → Hitung Laba → kelima tab laporan, format Rupiah, warna merah,
+      dan grafik.
+    - Data melebihi batas ukuran memunculkan pesan yang jelas.
 
 ## 9. Rencana versi 2 (tidak dikerjakan di v1)
 
@@ -733,8 +828,8 @@ Untuk data di atas batas §7.2:
    - Prisma (Client, ApiKey, UsageLog), CLI create-client, middleware, Dockerfile,
      docker-compose.
    - `/analyze` menerima `mapping` langsung.
-4. **Add-on:** Pengaturan, Isi Data Demo, Hitung Laba, penulisan 5 tab laporan
-   beserta format dan grafik, cek ukuran. **Pada titik ini demo siap ditunjukkan.**
+4. **Add-on:** Pengaturan, cek locale dan zona waktu, Isi Data Demo, Hitung Laba,
+   penulisan 5 tab laporan beserta format dan grafik, cek ukuran. **Pada titik ini demo siap ditunjukkan.**
 5. **Template pemetaan:**
    - Model MappingTemplate, `core/mapping.ts` (suggest), endpoint suggest + templates.
    - Dukungan `template_id` + `HEADER_BERUBAH` di `/analyze`.
