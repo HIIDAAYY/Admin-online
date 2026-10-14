@@ -1,5 +1,5 @@
 import { agregasi } from './aggregate.js';
-import { buatTarifPackaging, saringPeriode, validasiBiaya } from './biaya.js';
+import { buatTarifPackaging, cekPlatformPackaging, saringPeriode, validasiBiaya } from './biaya.js';
 import { Catatan } from './catatan.js';
 import { buangDuplikat } from './dedupe.js';
 import { ekstrakBaris } from './extract.js';
@@ -24,12 +24,13 @@ export function analyze(input: AnalyzeInput): Laporan {
         pesan: `Kolom status di ${p.sheet} tidak dipetakan; semua baris dianggap selesai.`,
       });
     }
-    semua.push(...baris);
+    for (const b of baris) semua.push(b); // bukan push(...baris): spread ratusan ribu elemen bisa stack overflow
   }
 
   const pesanan = bentukPesanan(buangDuplikat(semua, catatan), catatan);
   const periode = hitungPeriode(pesanan);
   const biaya = saringPeriode(validasiBiaya(input.biaya, catatan), new Set(periode), catatan);
+  cekPlatformPackaging(biaya, pesanan.map((p) => p.platform), catatan);
   const { items, pesanan: ringkas } = hitungItem(
     pesanan,
     { hpp: bangunHpp(input.hpp), tarifPackaging: buatTarifPackaging(biaya), opsi },

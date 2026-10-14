@@ -68,6 +68,18 @@ export function saringPeriode(biaya: BiayaValid[], periode: Set<string>, catatan
   return biaya.filter((b) => periode.has(b.bulan));
 }
 
+/** Tarif packaging khusus platform yang namanya tidak cocok dengan tab pesanan mana pun → peringatan. */
+export function cekPlatformPackaging(biaya: BiayaValid[], platformPesanan: string[], catatan: Catatan): void {
+  const ada = new Set(platformPesanan.map(kunci));
+  for (const b of biaya) {
+    if (b.jenis !== 'packaging' || !b.platform || ada.has(kunci(b.platform))) continue;
+    catatan.tambah({
+      jenis: 'BIAYA_TIDAK_VALID', sheet: 'Biaya', baris: b.baris, platform: b.platform,
+      pesan: `Tarif packaging untuk platform "${b.platform}" tidak cocok dengan tab pesanan mana pun, jadi tidak dipakai. Periksa ejaan nama platform.`,
+    });
+  }
+}
+
 /** Tarif packaging per pesanan; tarif per platform mengalahkan tarif umum bulan yang sama. */
 export function buatTarifPackaging(biaya: BiayaValid[]): (platform: string, bulan: string) => number {
   const umum = new Map<string, number>();

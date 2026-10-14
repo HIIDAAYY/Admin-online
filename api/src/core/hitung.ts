@@ -55,7 +55,8 @@ export function hitungItem(daftar: Pesanan[], ktx: KonteksHitung, catatan: Catat
     }
     const packaging = allocate(ktx.tarifPackaging(p.platform, p.bulan), bobot);
 
-    // potongan_lainnya dari total_diterima, hanya atas item non-retur (spec §6.5).
+    // potongan_lainnya dari total_diterima (spec §6.5). Biaya baris retur ikut dikurangkan agar
+    // Σ dana diterima pesanan = total_diterima persis; hasilnya dibagi ke item non-retur saja.
     const lainnya = baris.map(() => 0);
     let belumCair = false;
     const nonRetur = baris.map((_, i) => i).filter((i) => !retur[i]);
@@ -64,11 +65,15 @@ export function hitungItem(daftar: Pesanan[], ktx: KonteksHitung, catatan: Catat
       if (diterima === 0) {
         belumCair = true;
       } else {
+        const potongan = (i: number) => FIELD_BIAYA.reduce((s, f) => s + biaya[f][i], 0);
         const nilai = nonRetur.reduce((a, i) => a + baris[i].nilai, 0);
-        const terpetakan = nonRetur.reduce((a, i) => a + FIELD_BIAYA.reduce((s, f) => s + biaya[f][i], 0), 0);
-        const selisih = nilai - terpetakan - diterima;
-        const bagian = allocate(selisih, bobotItem(nonRetur.map((i) => baris[i])));
+        const terpetakanNonRetur = nonRetur.reduce((a, i) => a + potongan(i), 0);
+        const terpetakanRetur = baris.reduce((a, _, i) => a + (retur[i] ? potongan(i) : 0), 0);
+        const selisih = nilai - terpetakanNonRetur - diterima;
+        const bagian = allocate(selisih - terpetakanRetur, bobotItem(nonRetur.map((i) => baris[i])));
         nonRetur.forEach((i, k) => (lainnya[i] = bagian[k]));
+        // Peringatan dinilai atas item non-retur saja, supaya biaya retur yang dikembalikan marketplace
+        // tidak memicu alarm palsu.
         catatSelisih(selisih, nilai, p, baris[nonRetur[0]], catatan);
       }
     }

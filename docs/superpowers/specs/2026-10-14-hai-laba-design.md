@@ -448,14 +448,20 @@ Dihitung per pesanan, hanya jika `total_diterima` dipetakan:
     tidak ada dana yang diharapkan.
 - **Pesanan sudah cair:**
   ```
-  potongan_lainnya_pesanan = Σ nilai_item − Σ potongan terpetakan − total_diterima
+  potongan_lainnya_pesanan = Σ nilai_item(non-retur) − Σ potongan terpetakan(semua item aktif) − total_diterima
   ```
   - "Σ potongan terpetakan" adalah diskon, voucher, admin, layanan, dan ongkir pada
-    item non-retur.
-  - Hanya item non-retur yang dihitung. Retur tidak menghasilkan dana cair.
+    **semua** item non-batal, termasuk biaya yang tercatat di baris retur. Dengan begitu
+    Σ dana diterima item pesanan = total_diterima persis, baik marketplace mengembalikan
+    biaya bagian retur maupun tidak. (Revisi 2026-10-14 setelah review akhir: versi awal
+    hanya menghitung item non-retur, sehingga pesanan campuran retur tidak cocok dengan
+    dana cair.)
+  - Nilai item hanya dari item non-retur. Retur tidak menghasilkan dana cair.
   - Hasilnya dialokasikan ke item non-retur menurut nilai_item (§6.3).
-  - `SELISIH_REKONSILIASI` (peringatan) dicatat jika hasilnya negatif kurang dari
-    −Rp1.000, atau lebih dari 50% Σ nilai_item. Nilainya tetap dipakai apa adanya.
+  - `SELISIH_REKONSILIASI` (peringatan) dinilai atas item **non-retur** saja
+    (`Σ nilai_item − Σ potongan item non-retur − total_diterima`), supaya biaya retur
+    yang dikembalikan marketplace tidak memicu peringatan palsu. Dicatat jika hasilnya
+    negatif kurang dari −Rp1.000, atau lebih dari 50% Σ nilai_item.
   - Pesan untuk selisih **negatif** (dana cair lebih besar dari perhitungan) wajib
     menyebut kemungkinan penyebab: "Dana cair lebih besar Rp… dari perhitungan.
     Kemungkinan harga_jual dipetakan ke harga setelah diskon sementara
@@ -534,6 +540,9 @@ Baris berstatus retur:
   di Ringkasan dan Bulanan.
 - Baris Biaya dengan bulan atau nilai tak terbaca, atau jenis tidak dikenal, dicatat
   `BIAYA_TIDAK_VALID` dan dilewati.
+- Tarif packaging khusus platform yang nama platformnya tidak cocok dengan tab pesanan
+  mana pun juga dicatat `BIAYA_TIDAK_VALID` (biasanya salah ketik), karena tarifnya tidak
+  akan pernah terpakai.
 
 ### 6.9 Rantai laba
 

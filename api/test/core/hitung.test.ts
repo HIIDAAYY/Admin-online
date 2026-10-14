@@ -100,15 +100,57 @@ describe('hitungItem — status', () => {
     expect(items[0].hpp).toBe(30000);
   });
 
-  it('pesanan campuran selesai + retur: rekonsiliasi hanya atas item non-retur', () => {
+  // Dana diterima satu pesanan harus sama dengan total_diterima, termasuk saat sebagian item diretur.
+  const danaPesanan = (items: ReturnType<typeof jalankan>['items']) =>
+    items.reduce((a, i) => a + (i.retur ? 0 : i.nilai) - i.diskon_voucher - i.biaya_admin - i.biaya_layanan - i.ongkir - i.lainnya, 0);
+
+  it('pesanan campuran selesai + retur, biaya bagian retur dikembalikan → dana = total_diterima', () => {
     const { items, pesanan, c } = jalankan([
       baris('A1', 'S1', 1, 60000, { Admin: 10000, Diterima: 54000 }),
       baris('A1', 'S2', 1, 40000, { Status: 'Retur' }),
     ]);
     expect(ambil(items, 'biaya_admin')).toEqual([6000, 4000]);
-    expect(ambil(items, 'lainnya')).toEqual([0, 0]);
+    expect(ambil(items, 'lainnya')).toEqual([-4000, 0]);
+    expect(danaPesanan(items)).toBe(54000);
     expect(pesanan[0]).toMatchObject({ punyaRetur: true, belumCair: false });
     expect(c.masalah).toEqual([]);
+  });
+
+  it('pesanan campuran, biaya penuh tetap dipotong → dana = total_diterima, tanpa hitung ganda', () => {
+    const { items, c } = jalankan([
+      baris('A1', 'S1', 1, 60000, { Admin: 10000, Diterima: 50000 }),
+      baris('A1', 'S2', 1, 40000, { Status: 'Retur' }),
+    ]);
+    expect(ambil(items, 'lainnya')).toEqual([0, 0]);
+    expect(danaPesanan(items)).toBe(50000);
+    expect(c.masalah).toEqual([]);
+  });
+
+  it('pesanan campuran dengan biaya level item → dana = total_diterima', () => {
+    const m = mappingStd({ biaya_admin: { headers: ['Admin'] } });
+    const { items } = jalankan([
+      baris('A1', 'S1', 1, 100000, { Admin: 5000, Diterima: 90000 }),
+      baris('A1', 'S2', 1, 50000, { Status: 'Retur', Admin: 5000 }),
+    ], { mapping: m });
+    expect(danaPesanan(items)).toBe(90000);
+  });
+
+  it('acak: setiap pesanan yang sudah cair → Σ dana item = total_diterima', () => {
+    let s = 99;
+    const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    for (let k = 0; k < 200; k++) {
+      const n = 1 + Math.floor(r() * 4);
+      const rows = Array.from({ length: n }, (_, i) => baris('A1', `S${i + 1}`, 1 + Math.floor(r() * 3), 1000 * (1 + Math.floor(r() * 90)), {
+        Status: i > 0 && r() < 0.4 ? 'Retur' : 'Selesai',
+        Diskon: Math.floor(r() * 3) * 500,
+        Admin: i === 0 ? Math.floor(r() * 20) * 500 : null,
+        Voucher: i === 0 ? Math.floor(r() * 4) * 1000 : null,
+        Diterima: i === 0 ? 1000 + Math.floor(r() * 200) * 1000 : null,
+      }));
+      const { items, pesanan } = jalankan(rows);
+      if (pesanan[0].belumCair) continue;
+      expect(danaPesanan(items)).toBe(rows[0].Diterima);
+    }
   });
 
   it('baris batal dikeluarkan; pesanan batal tidak menghasilkan item', () => {

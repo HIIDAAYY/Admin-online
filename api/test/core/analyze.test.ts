@@ -176,7 +176,38 @@ describe('analyze — info', () => {
   });
 });
 
+describe('analyze — platform di tab Biaya', () => {
+  it('tarif packaging untuk platform yang tidak ada di tab pesanan mana pun → peringatan', () => {
+    const lap = analyze({
+      pesanan: [tab('TikTok Shop', [baris('B1', 'S1', 1, 100000)], mappingStd({ total_diterima: undefined }))],
+      hpp: HPP,
+      biaya: [biaya('2026-07', 'packaging', 2000, 'Tiktok')],
+    });
+    expect(lap.ringkasan.packaging).toBe(0);
+    expect(lap.masalah).toEqual([expect.objectContaining({
+      jenis: 'BIAYA_TIDAK_VALID', sheet: 'Biaya', baris: 2, platform: 'Tiktok',
+      pesan: 'Tarif packaging untuk platform "Tiktok" tidak cocok dengan tab pesanan mana pun, jadi tidak dipakai. Periksa ejaan nama platform.',
+    })]);
+  });
+
+  it('tarif packaging platform yang ada → tanpa peringatan', () => {
+    const lap = analyze({
+      pesanan: [tab('TikTok Shop', [baris('B1', 'S1', 1, 100000)], mappingStd({ total_diterima: undefined }))],
+      hpp: HPP,
+      biaya: [biaya('2026-07', 'packaging', 2000, 'tiktok shop')],
+    });
+    expect(lap.ringkasan.packaging).toBe(2000);
+    expect(lap.masalah).toEqual([]);
+  });
+});
+
 describe('analyze — batas & kesalahan', () => {
+  it('satu tab dengan 200.000 baris tidak crash', () => {
+    const rows = Array.from({ length: 200_000 }, (_, i) => baris(`A${i}`, 'S1', 1, 1000));
+    const lap = analyze({ pesanan: [tab('Shopee', rows, mappingStd({ total_diterima: undefined }))], hpp: HPP, biaya: [] });
+    expect(lap.ringkasan.jumlah_pesanan).toBe(200_000);
+  }, 60_000);
+
   it('masalah dibatasi 1.000, jumlah lengkap', () => {
     const rows = Array.from({ length: 1200 }, (_, i) => baris(`X${i}`, '', 1, 1000));
     const lap = analyze({ pesanan: [tab('Shopee', rows)], hpp: [], biaya: [] });
